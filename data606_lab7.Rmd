@@ -1,0 +1,336 @@
+---
+title: "Data606_Lab07"
+author: "Mahmud Hasan Al Raji"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+
+# Inference for numerical data
+
+In this lab, i will explore and visualize the data using the tidyverse suite of packages, and perform statistical inference using infer. The data can be found in the companion package for OpenIntro resources, openintro.
+
+# Load packages
+
+```{r }
+library(tidyverse)
+library(openintro)
+library(infer)
+```
+
+# The data
+
+Every two years, the Centers for Disease Control and Prevention conduct the Youth Risk Behavior Surveillance System (YRBSS) survey, where it takes data from high schoolers (9th through 12th grade), to analyze health patterns. I will work with a selected group of variables from a random sample of observations during one of the years the YRBSS was conducted. Load the yrbss data set into my workspace.
+
+```{r }
+data('yrbss', package='openintro')
+```
+
+There are observations on 13 different variables, some categorical and some numerical. The meaning of each variable can be found by bringing up the help file: ?yrbss
+
+# Exercise 1: What are the cases in this data set? How many cases are there in our sample?
+
+By using the following commmand we can get the answer of the question above:
+
+```{r }
+glimpse(yrbss)
+
+```
+* Ans 1: There are 13583 cases in the data set.
+
+# Exploratory data analysis
+
+I will first start with analyzing the weight of the participants in kilograms: weight.
+Using visualization and summary statistics, I will describe the distribution of weights. The summary function can be useful.
+
+```{r }
+summary(yrbss$weight)
+```
+
+# Exercise 2: How many observations are we missing weights from?
+* Ans 2; It is seen that the weight column has 1004 NA values. So, there are 1004 weights observatoin are missing in the data set.
+
+
+** Creating a new variable physical_3plus, which will be coded as either “yes” if they are physically active for at least 3 days a week, and “no” if not.
+
+```{r }
+yrbss <- yrbss %>% 
+  mutate(physical_3plus = ifelse(yrbss$physically_active_7d > 2, "yes", "no"))
+```
+
+# Exercise 3: Make a side-by-side boxplot of physical_3plus and weight. Is there a relationship between these two variables? What did you expect and why?
+
+```{r }
+yrbss_new<-yrbss %>% 
+  mutate(physical_3plus = ifelse(yrbss$physically_active_7d > 2, "yes", "no")) %>% na.exclude()
+ggplot(yrbss_new, aes(x=weight, y=physical_3plus)) + geom_boxplot() 
+```
+* Ans 3: From the plot above it is seen that the wieghts are almost similar for those who physically active for atleast 3 days and those who dont active for that time. It is also seen that, those, who dont physically active for atleast 3 days have more outliers in weight distribution and it was expected. As because I assumed that physically less active data set must have more weight gainers. So, it is said that the The data is more normally distribured for those who physically active more than for those who don’t.     
+
+The box plots show how the medians of the two distributions compare, but we can also compare the means of the distributions using the following to first group the data by the physical_3plus variable, and then calculate the mean weight in these groups using the mean function while ignoring missing values by setting the na.rm argument to TRUE.
+
+```{r }
+yrbss %>%
+  group_by(physical_3plus) %>%
+  summarise(mean_weight = mean(weight, na.rm = TRUE))
+```
+
+There is an observed difference, but is this difference statistically significant? In order to answer this question I will conduct a hypothesis test.
+
+# Inference
+
+# Exercise 4: Are all conditions necessary for inference satisfied? Comment on each. You can compute the group sizes with the summarize command above by defining a new variable with the definition n().
+
+* Ans 4: For inference, when comparing the means of two groups three conditions need to be satisfied and they are: independence within groups, independence between groups and the size of the each group is sufficiently large i.e. at least 30 for holding the central limit theory and the mean distribution of each group to be approximately normal.
+Here, students are randomly chosen for each group so they are independent within group. Also, each group is formed by students who are categorized by their difference in physical activity reflecting independent case between groups. Now, for determining the size of the each group the following code can be used:
+
+```{r }
+
+yrbss %>% 
+  filter(!(is.na(physical_3plus) | is.na(weight))) %>%
+    count(physical_3plus)
+```
+
+From above, it is clearly seen that each group size is more than 30. Hence, it can be said that all the conditions necessary inference are satisfied.  
+
+# Exercise 5 : Write the hypotheses for testing if the average weights are different for those who exercise at least times a week and those who don’t.
+
+8 Ans 5: Let, μ1 is the mean weight of those students who are physically active at least 3 days a week and μ2 is the mean weight of those students who are physically active less than 3 days a week.So, condition for the null and alternative hypotheses are:
+
+H0:μ1=μ2
+HA: μ1≠μ2
+
+Next, we will introduce a new function, hypothesize, that falls into the infer workflow. You will use this method for conducting hypothesis tests.But first, we need to initialize the test, which we will save as obs_diff.
+
+```{r }
+obs_diff <- yrbss %>%
+  filter(!(is.na(physical_3plus) | is.na(weight))) %>%
+  specify(weight ~ physical_3plus) %>%
+  calculate(stat = "diff in means", order = c("yes", "no"))
+obs_diff
+```
+Notice how you can use the functions specify and calculate again like you did for calculating confidence intervals. Here, though, the statistic you are searching for is the difference in means, with the order being yes - no != 0.
+
+After you have initialized the test, you need to simulate the test on the null distribution, which we will save as null.
+
+```{r }
+set.seed(1234)
+null_dist <- yrbss %>%
+  filter(!(is.na(physical_3plus) | is.na(weight))) %>%
+  specify(weight ~ physical_3plus) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in means", order = c("yes", "no"))
+
+```
+
+Here, hypothesize is used to set the null hypothesis as a test for independence. In one sample cases, the null argument can be set to “point” to test a hypothesis relative to a point estimate.
+
+Also, note that the type argument within generate is set to permute, which is the argument when generating a null distribution for a hypothesis test.
+
+We can visualize this null distribution with the following code:
+
+```{r }
+ggplot(data = null_dist, aes(x = stat)) +
+  geom_histogram()
+```
+
+# Exercise 6: How many of these null permutations have a difference of at least obs_stat?
+
+* Ans 6: By using following code we can check if any of the permutations in the null_dist data frame have a difference in means greater than what is in the observed data set.
+
+```{r }
+(null_dist$stat > obs_diff[[1]]) %>%
+  table()
+```
+
+It is seen above that all the permutations have a difference in means that is below from what was observed. From the histogram's span range above, it is also clearly seen that the mean difference values are below than the observed values.
+
+Calculating p value by using get_p_value function after test initialization and the null distribution formation:  
+
+```{r }
+null_dist %>%
+  get_p_value(obs_stat = obs_diff, direction = "two_sided")
+
+```
+
+This the standard workflow for performing hypothesis tests.
+
+# Exercise 7: Construct and record a confidence interval for the difference between the weights of those who exercise at least three times a week and those who don’t, and interpret this interval in context of the data.
+
+* Ans 7: Below is the code for finding confidence interval:
+
+```{r }
+null_dist %>%
+  get_ci(level = 0.95)
+```
+
+The 95% confidence interval above does not contain the observed mean weight difference value for the students who are physically active for at least 3 days in a week and who are not, It is clear that the confidence interval is not reflecting the value claimed by null hypothesis so we can reject the null hypothesis. That means there exist a significance difference in mean value of weights for the stated students group.   
+We can also calculate the confidence interval for the difference between mean weights value from the actual data:
+
+```{r }
+set.seed(1234)
+
+yrbss %>% 
+  filter(!(is.na(physical_3plus) | is.na(weight))) %>%
+    specify(weight ~ physical_3plus) %>%
+    generate(reps = 1000, type = "bootstrap") %>%
+    calculate(stat = "diff in means", order = c('yes', 'no')) %>%
+    get_ci(level = 0.95)
+```
+
+The confidence interval above contains the observed for mean weights difference. It is also noted that Note that the confidence interval does not include 0, which is another significance for the existing of the differences.
+
+# Exercise 8: Calculate a 95% confidence interval for the average height in meters (height) and interpret it in context.
+
+* Ans 8: Below is the code to calculate 95% confidence interval for the average height:
+
+```{r }
+
+set.seed(1234)
+
+yrbss %>% 
+    filter(!is.na(height)) %>% 
+    specify(response = height) %>%
+    generate(reps = 1000, type = 'bootstrap')  %>%
+    calculate(stat = 'mean')  %>%
+    get_ci(level = 0.95)
+
+```
+
+From the 95% confidence interval above, we can say that we are 95% confident that the average student height falls between these two values.
+
+We can double check it by using the actual formula for the confidence interval:
+
+CI= μ ± Z⋅ σ/√n
+
+```{r }
+height_ci <- 
+  yrbss %>%
+    filter(!is.na(height)) %>% 
+      summarise(avg = mean(height),
+                sigma = sd(height),
+                size = n())
+
+avg = height_ci$avg[[1]][1]
+sigma = height_ci$sigma[[1]][1]
+size = height_ci$size[[1]][1]
+cl = 0.95
+crit_val = abs(qnorm((1-cl)/2))
+
+ci_lower = avg - (crit_val * (sigma / sqrt(size)))
+ci_upper = avg + (crit_val * (sigma / sqrt(size)))
+
+cat(ci_lower, ci_upper)
+
+```
+So, the values for the confidence intervals are similar for this calculation too. So, the average height of the students fall between these values and we are 95% confident about that.
+
+
+# Exercise 9: Calculate a new confidence interval for the same parameter at the 90% confidence level. Comment on the width of this interval versus the one obtained in the previous exercise.
+
+* Ans 9 : Below is the code for calculating 90% confidence interval:
+
+```{r }
+
+set.seed(1234)
+
+yrbss %>% 
+    filter(!is.na(height)) %>% 
+    specify(response = height) %>%
+    generate(reps = 1000, type = 'bootstrap')  %>%
+    calculate(stat = 'mean')  %>%
+    get_ci(level = 0.90)
+```
+
+This time, the 90% confidence interval means that we are 90% confident that the average of student height falls between the above range of values. This interval is slightly smaller than the previous interval (at 95%) as because the lower the confidence level the more shrink will be the interval and the chances of the actual value falling in the interval will also be lower. 
+
+# Exercise 10: Conduct a hypothesis test evaluating whether the average height is different for those who exercise at least three times a week and those who don’t.
+
+* Ans 10: Here, I am going to conduct a null and alternative hypothesis test. For that, let μ1 is the average height of students who exercises at least 3 times a week and μ2 is the average height of students who don't exercises at least 3 times a week:
+
+So, conditions for null hypothesis: H0: μ1=μ2 
+and for alternative hypothesis: HA: μ1≠μ2
+
+Below is the code for conducting the null hypothesis test:
+
+```{r }
+obs_diff <- yrbss %>%
+  filter(!(is.na(physical_3plus) | is.na(height))) %>%
+  specify(height ~ physical_3plus) %>%
+  calculate(stat = "diff in means", order = c("yes", "no"))
+obs_diff
+
+set.seed(1234)
+
+yrbss %>%
+  filter(!(is.na(physical_3plus) | is.na(height))) %>%
+  specify(height ~ physical_3plus) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in means", order = c("yes", "no")) %>% 
+  get_p_value(obs_stat = obs_diff, direction = "two_sided")
+```
+
+So, here the p value is 0. That means the strength of evidence in support of null hypothesis is very low than the common significance level. So, we can reject the null hypothesis indicating that there exists a difference in average height value in stated students group.  
+
+# Exercise 11: Now, a non-inference task: Determine the number of different options there are in the dataset for the hours_tv_per_school_day there are.
+
+* Ans 11: Below is the code to determine the number of difference options exist in the data set for the hours_tv_per_school_day column:
+
+```{r }
+(yrbss %>% 
+   filter(!is.na(hours_tv_per_school_day)))$hours_tv_per_school_day %>%
+  unique() %>%
+    length()
+```
+
+So, it is seen that there are 7 options in the data set for the hours_tv_per_school_day column. If we consider the missing values (not responding to question) an option, then it goes to 8 options in total.
+
+# Exercise 12: Come up with a research question evaluating the relationship between height or weight and sleep. Formulate the question in a way that it can be answered using a hypothesis test and/or a confidence interval. Report the statistical results, and also provide an explanation in plain language. Be sure to check all assumptions, state your α level, and conclude in context.
+
+Research question: Is there any difference in the average weight between students who sleep  7hours at night and who don't sleep 7 hours at night?
+
+Hypotheses: Let's consider μ1 is the average weight of students who sleep 7 hours at night and μ2 is the average of students who don't sleep 7 hours at night. So, below are the conditions for null (H0) and alternative hypotheses (HA):
+
+H0: μ1=μ2 
+HA: μ1≠μ2
+
+Assumptions: As students are randomly selected and being put in each group as different type so we can assume that the conditions for independence for both within and between these two groups are met. Now the other condition The last condition requires that we check the size of each group:
+
+```{r }
+yrbss <- yrbss %>% 
+  mutate(seven_hours_sleep = 
+           ifelse(school_night_hours_sleep==7, 'yes', 'no'))
+
+yrbss %>%
+  filter(!(is.na(seven_hours_sleep) | is.na(weight))) %>%
+    count(seven_hours_sleep)
+
+```
+
+In this sample there are 3283 students who sleep 7 hours and 8198 students who don't sleep 7 hours. So, the sample size is large enough to hold the central limit theorem. Therefore, all the conditions for inference are met.
+Now, the hypotheses test is carried out below using the confidence intervals and an α = 0.05:
+
+```{r }
+
+obs_diff <- yrbss %>%
+  filter(!(is.na(seven_hours_sleep) | is.na(weight))) %>%
+  specify(weight ~ seven_hours_sleep) %>%
+  calculate(stat = "diff in means", order = c("yes", "no"))
+obs_diff
+
+set.seed(1234)
+
+yrbss %>% 
+  filter(!(is.na(seven_hours_sleep) | is.na(weight))) %>%
+    specify(weight ~ seven_hours_sleep) %>%
+    generate(reps = 1000, type = "bootstrap") %>%
+    calculate(stat = "diff in means", order = c('yes', 'no')) %>%
+    get_ci(level = 0.95)
+```
+
+It is seen that at 95% confidence interval, the range does not span 0. That means the null hypothesis is not true. So, the null hypothesis can be rejected. Hence, it can be said a significant difference exists in average wight of students who sleep 7 hours at night and who don't sleep 7 hours at night.  
+
+
+
